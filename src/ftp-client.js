@@ -93,7 +93,7 @@ class FtpClient {
           await this.client.cd(currentPath);
           // Go back to root
           await this.client.cd('/');
-        } catch (cdError) {
+        } catch (_cdError) {
           // Directory doesn't exist, create it using MKD
           try {
             await this.client.send('MKD ' + currentPath);

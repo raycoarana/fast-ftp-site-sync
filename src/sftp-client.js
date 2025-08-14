@@ -71,7 +71,7 @@ class SshSftpClient {
         if (stat.isDirectory()) {
           return; // Directory already exists
         }
-      } catch (statError) {
+      } catch (_statError) {
         // Directory doesn't exist, create it
       }
       
