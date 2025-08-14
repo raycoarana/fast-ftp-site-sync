@@ -4,9 +4,13 @@ on:
   push:
     branches: [ main ]
 
+# Only allow one release workflow to run at a time
 concurrency:
   group: release
   cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -17,6 +21,8 @@ jobs:
       with:
         fetch-depth: 0  # Fetch full history for semantic versioning
         token: ${{ secrets.GITHUB_TOKEN }}
+        persist-credentials: true
+        ref: main
     
     - name: Use Node.js 20.x
       uses: actions/setup-node@v4
@@ -35,8 +41,8 @@ jobs:
     
     - name: Configure Git
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
     
     - name: Check for changes in dist/
       id: check_dist_changes
@@ -150,12 +156,16 @@ jobs:
     
     - name: Create and push tag
       if: steps.check_dist_changes.outputs.has_changes == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git tag -a "v${{ steps.release_version.outputs.version }}" -m "Release v${{ steps.release_version.outputs.version }}"
         git push origin "v${{ steps.release_version.outputs.version }}"
     
     - name: Update major version tag
       if: steps.check_dist_changes.outputs.has_changes == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         # Extract major version from the full version
         FULL_VERSION="${{ steps.release_version.outputs.version }}"
@@ -176,6 +186,8 @@ jobs:
     
     - name: Push changes to main
       if: steps.check_dist_changes.outputs.has_changes == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git push origin main
     
