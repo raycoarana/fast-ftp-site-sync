@@ -1,0 +1,56 @@
+name: Smart State-Based Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build project
+      run: npm run build
+    
+    - name: Deploy with Smart Sync
+      uses: raycoarana/fast-ftp-site-sync@v1
+      with:
+        host: ${{ secrets.FTP_HOST }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        protocol: 'ftp'
+        local-path: './dist'
+        remote-path: '/public_html'
+        exclude: '*.map,*.log,coverage/**'
+        delete-orphaned: 'true'
+        state-file-path: '.deploy-state.json'
+        force-full-sync: 'false'  # Smart incremental sync
+        dry-run: 'false'
+        
+    # Example of force full sync for production deployments
+    - name: Force Full Sync (if needed)
+      uses: raycoarana/fast-ftp-site-sync@v1
+      if: github.event_name == 'workflow_dispatch'
+      with:
+        host: ${{ secrets.FTP_HOST }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        protocol: 'ftp'
+        local-path: './dist'
+        remote-path: '/public_html'
+        exclude: '*.map,*.log,coverage/**'
+        delete-orphaned: 'true'
+        force-full-sync: 'true'  # Override state file

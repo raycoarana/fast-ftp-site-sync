@@ -1,0 +1,68 @@
+name: 'Fast FTP Site Sync'
+description: 'Sync files to FTP/SFTP remote site with selective folder synchronization'
+author: 'raycoarana'
+
+inputs:
+  host:
+    description: 'FTP/SFTP server hostname'
+    required: true
+  port:
+    description: 'FTP/SFTP server port'
+    required: false
+    default: '21'
+  username:
+    description: 'FTP/SFTP username'
+    required: true
+  password:
+    description: 'FTP/SFTP password'
+    required: false
+  private-key:
+    description: 'SSH private key for SFTP connection'
+    required: false
+  protocol:
+    description: 'Protocol to use (ftp or sftp)'
+    required: false
+    default: 'ftp'
+  local-path:
+    description: 'Local path/folder to sync from'
+    required: false
+    default: './'
+  remote-path:
+    description: 'Remote path/folder to sync to'
+    required: false
+    default: '/'
+  exclude:
+    description: 'Comma-separated list of files/folders to exclude'
+    required: false
+  dry-run:
+    description: 'Perform a dry run without actually uploading files'
+    required: false
+    default: 'false'
+  delete-orphaned:
+    description: 'Delete files on remote that do not exist locally'
+    required: false
+    default: 'false'
+  state-file-path:
+    description: 'Path to the state file on remote server'
+    required: false
+    default: '.ftp-sync-state.json'
+  force-full-sync:
+    description: 'Force full sync ignoring remote state file'
+    required: false
+    default: 'false'
+
+outputs:
+  files-uploaded:
+    description: 'Number of files uploaded'
+  files-deleted:
+    description: 'Number of files deleted'
+  sync-status:
+    description: 'Overall sync status (success/failed)'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+
+branding:
+  icon: 'upload-cloud'
+  color: 'blue'
