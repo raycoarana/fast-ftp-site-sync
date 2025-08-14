@@ -58536,7 +58536,7 @@ class FtpClient {
     try {
       const files = [];
       
-      async function listRecursive(client, currentPath) {
+      const listRecursive = async (client, currentPath) => {
         const list = await client.list(currentPath);
         
         for (const item of list) {
@@ -58548,7 +58548,7 @@ class FtpClient {
             await listRecursive(client, itemPath);
           }
         }
-      }
+      };
       
       await listRecursive(this.client, remotePath);
       return files;
@@ -58568,7 +58568,7 @@ class FtpClient {
   async disconnect() {
     try {
       this.client.close();
-    } catch (error) {
+    } catch (_error) {
       // Ignore disconnection errors
     }
   }
@@ -58662,7 +58662,7 @@ class SshSftpClient {
     try {
       const files = [];
       
-      async function listRecursive(client, currentPath) {
+      const listRecursive = async (client, currentPath) => {
         const list = await client.list(currentPath);
         
         for (const item of list) {
@@ -58674,7 +58674,7 @@ class SshSftpClient {
             await listRecursive(client, itemPath);
           }
         }
-      }
+      };
       
       await listRecursive(this.client, remotePath);
       return files;
@@ -58694,7 +58694,7 @@ class SshSftpClient {
   async disconnect() {
     try {
       await this.client.end();
-    } catch (error) {
+    } catch (_error) {
       // Ignore disconnection errors
     }
   }

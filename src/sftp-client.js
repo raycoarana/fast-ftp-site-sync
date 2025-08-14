@@ -110,7 +110,7 @@ class SshSftpClient {
   async disconnect() {
     try {
       await this.client.end();
-    } catch (error) {
+    } catch (_error) {
       // Ignore disconnection errors
     }
   }

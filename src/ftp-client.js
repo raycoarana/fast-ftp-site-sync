@@ -101,7 +101,7 @@ class FtpClient {
   async disconnect() {
     try {
       this.client.close();
-    } catch (error) {
+    } catch (_error) {
       // Ignore disconnection errors
     }
   }
