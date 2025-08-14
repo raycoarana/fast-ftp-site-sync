@@ -19,11 +19,6 @@ jobs:
           FTP_USER_NAME: testuser
           FTP_USER_PASS: testpass
           FTP_USER_HOME: /home/ftpuser
-        options: >-
-          --health-cmd "nc -z localhost 21"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
       # SFTP Server
       sftp-server:
@@ -32,11 +27,6 @@ jobs:
           - 2222:22
         env:
           SFTP_USERS: testuser:testpass:1001:1001:upload
-        options: >-
-          --health-cmd "nc -z localhost 22"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
     - name: Checkout repository
@@ -57,12 +47,15 @@ jobs:
     - name: Wait for servers to be ready
       run: |
         echo "Waiting for FTP server..."
-        timeout 60 bash -c 'until nc -z localhost 21; do sleep 1; done'
+        timeout 120 bash -c 'until nc -z localhost 21; do echo "FTP not ready, waiting..."; sleep 2; done'
         echo "FTP server is ready!"
         
         echo "Waiting for SFTP server..."
-        timeout 60 bash -c 'until nc -z localhost 2222; do sleep 1; done'
+        timeout 120 bash -c 'until nc -z localhost 2222; do echo "SFTP not ready, waiting..."; sleep 2; done'
         echo "SFTP server is ready!"
+        
+        echo "Giving services additional time to fully initialize..."
+        sleep 5
 
     # Test 1: FTP Upload (No existing state)
     - name: Test FTP Upload - Initial Sync
