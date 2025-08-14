@@ -69,7 +69,7 @@ class FtpClient {
     try {
       const files = [];
       
-      async function listRecursive(client, currentPath) {
+      const listRecursive = async (client, currentPath) => {
         const list = await client.list(currentPath);
         
         for (const item of list) {
@@ -81,7 +81,7 @@ class FtpClient {
             await listRecursive(client, itemPath);
           }
         }
-      }
+      };
       
       await listRecursive(this.client, remotePath);
       return files;
