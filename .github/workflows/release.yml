@@ -1,0 +1,190 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for semantic versioning
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run tests
+      run: npm test
+    
+    - name: Build
+      run: npm run build
+    
+    - name: Configure Git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+    
+    - name: Check for changes in dist/
+      id: check_dist_changes
+      run: |
+        git add dist/
+        if git diff --staged --quiet; then
+          echo "No changes in dist/ folder after build"
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        else
+          echo "Changes detected in dist/ folder"
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+        fi
+        # Reset staging area
+        git reset
+    
+    - name: Skip release if no dist changes
+      if: steps.check_dist_changes.outputs.has_changes == 'false'
+      run: |
+        echo "⏭️ Skipping release - no changes detected in dist/ folder after build"
+        echo "This usually means there are no functional changes worth releasing."
+        exit 0
+    
+    - name: Determine release version
+      if: steps.check_dist_changes.outputs.has_changes == 'true'
+      id: release_version
+      run: |
+        CURRENT_VERSION=$(node -p "require('./package.json').version")
+        echo "Package.json version: $CURRENT_VERSION"
+        
+        # Check if the current version tag already exists
+        if git rev-parse "v$CURRENT_VERSION" >/dev/null 2>&1; then
+          echo "Tag v$CURRENT_VERSION already exists, incrementing minor version..."
+          
+          # Split version into parts
+          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+          MAJOR=${VERSION_PARTS[0]}
+          MINOR=${VERSION_PARTS[1]}
+          PATCH=${VERSION_PARTS[2]}
+          
+          # Increment minor version and reset patch to 0
+          NEW_MINOR=$((MINOR + 1))
+          NEW_VERSION="$MAJOR.$NEW_MINOR.0"
+          
+          echo "Auto-incremented to: $NEW_VERSION"
+          
+          # Update package.json with new version
+          npm version $NEW_VERSION --no-git-tag-version
+          
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "version_updated=true" >> $GITHUB_OUTPUT
+        else
+          echo "Tag v$CURRENT_VERSION doesn't exist, using current version"
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "version_updated=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Generate release notes
+      if: steps.check_dist_changes.outputs.has_changes == 'true'
+      id: release_notes
+      run: |
+        # Get the latest tag
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        
+        if [ -z "$LATEST_TAG" ]; then
+          # If no previous tags, get all commits
+          COMMITS=$(git log --pretty=format:"- %s (%h)" --reverse)
+        else
+          # Get commits since the latest tag
+          COMMITS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"- %s (%h)" --reverse)
+        fi
+        
+        # Create release notes
+        cat > release_notes.md << EOF
+        ## Changes
+        
+        $COMMITS
+        
+        ## Installation
+        
+        ### Specific Version (Recommended for Production)
+        \`\`\`yaml
+        - uses: raycoarana/fast-ftp-site-sync@v${{ steps.release_version.outputs.version }}
+        \`\`\`
+        
+        ### Major Version (Auto-updates with Minor/Patch Releases)
+        \`\`\`yaml
+        - uses: raycoarana/fast-ftp-site-sync@v$(echo ${{ steps.release_version.outputs.version }} | cut -d. -f1)
+        \`\`\`
+        
+        ## Version Info
+        - Release version: v${{ steps.release_version.outputs.version }}
+        - Major version tag: v$(echo ${{ steps.release_version.outputs.version }} | cut -d. -f1)
+        - Version auto-incremented: ${{ steps.release_version.outputs.version_updated }}
+        EOF
+        
+        echo "Generated release notes for v${{ steps.release_version.outputs.version }}"
+    
+    - name: Commit version changes and built files
+      if: steps.check_dist_changes.outputs.has_changes == 'true'
+      run: |
+        git add package.json dist/
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          if [ "${{ steps.release_version.outputs.version_updated }}" = "true" ]; then
+            git commit -m "chore: bump version to v${{ steps.release_version.outputs.version }} and update built files [skip ci]"
+          else
+            git commit -m "chore: update built files for v${{ steps.release_version.outputs.version }} [skip ci]"
+          fi
+        fi
+    
+    - name: Create and push tag
+      if: steps.check_dist_changes.outputs.has_changes == 'true'
+      run: |
+        git tag -a "v${{ steps.release_version.outputs.version }}" -m "Release v${{ steps.release_version.outputs.version }}"
+        git push origin "v${{ steps.release_version.outputs.version }}"
+    
+    - name: Update major version tag
+      if: steps.check_dist_changes.outputs.has_changes == 'true'
+      run: |
+        # Extract major version from the full version
+        FULL_VERSION="${{ steps.release_version.outputs.version }}"
+        MAJOR_VERSION=$(echo $FULL_VERSION | cut -d. -f1)
+        MAJOR_TAG="v${MAJOR_VERSION}"
+        
+        echo "Updating major version tag: $MAJOR_TAG -> v$FULL_VERSION"
+        
+        # Delete the existing major version tag if it exists (both locally and remotely)
+        git tag -d "$MAJOR_TAG" 2>/dev/null || true
+        git push origin ":refs/tags/$MAJOR_TAG" 2>/dev/null || true
+        
+        # Create new major version tag pointing to the current version
+        git tag -a "$MAJOR_TAG" -m "Major version $MAJOR_TAG (points to v$FULL_VERSION)"
+        git push origin "$MAJOR_TAG"
+        
+        echo "✅ Major version tag $MAJOR_TAG now points to v$FULL_VERSION"
+    
+    - name: Push changes to main
+      if: steps.check_dist_changes.outputs.has_changes == 'true'
+      run: |
+        git push origin main
+    
+    - name: Create GitHub Release
+      if: steps.check_dist_changes.outputs.has_changes == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release create "v${{ steps.release_version.outputs.version }}" \
+          --title "Release v${{ steps.release_version.outputs.version }}" \
+          --notes-file release_notes.md \
+          --latest
