@@ -12,16 +12,16 @@ async function run() {
     const port = parseInt(core.getInput('port') || '21');
     const username = core.getInput('username', { required: true });
     const password = core.getInput('password');
-    const privateKey = core.getInput('private-key');
+    const privateKey = core.getInput('private-key') || core.getInput('private_key');
     const protocol = core.getInput('protocol') || 'ftp';
-    const localPath = core.getInput('local-path') || './';
-    const remotePath = core.getInput('remote-path') || '/';
+    const localPath = core.getInput('local-path') || core.getInput('local_path') || './';
+    const remotePath = core.getInput('remote-path') || core.getInput('remote_path') || '/';
     const exclude = core.getInput('exclude');
-    const dryRun = core.getInput('dry-run') === 'true';
-    const deleteOrphaned = core.getInput('delete-orphaned') === 'true';
-    const stateFilePath = core.getInput('state-file-path') || '.ftp-sync-state.json';
-    const forceFullSync = core.getInput('force-full-sync') === 'true';
-
+    const dryRun = core.getInput('dry-run') === 'true' || core.getInput('dry_run') === 'true';
+    const deleteOrphaned = core.getInput('delete-orphaned') === 'true' || core.getInput('delete_orphaned') === 'true';
+    const stateFilePath = core.getInput('state-file-path') || core.getInput('state_file_path') || '.ftp-sync-state.json';
+    const forceFullSync = core.getInput('force-full-sync') === 'true' || core.getInput('force_full_sync') === 'true';
+    
     core.info(`Starting ${protocol.toUpperCase()} sync from ${localPath} to ${remotePath}`);
     
     // Validate inputs
@@ -94,7 +94,7 @@ async function run() {
       // Upload changed/new files
       for (const fileInfo of comparison.filesToUpload) {
         const localFilePath = fileInfo.localPath;
-        const remoteFilePath = fileInfo.remotePath.replace(localPath, remotePath);
+        const remoteFilePath = path.posix.join(remotePath, fileInfo.remotePath);
         
         if (dryRun) {
           core.info(`[DRY RUN] Would upload (${fileInfo.action}): ${localFilePath} -> ${remoteFilePath}`);

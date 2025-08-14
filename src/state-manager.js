@@ -88,7 +88,7 @@ class StateManager {
       // Write state to temporary file
       await fs.writeFile(tempFile, JSON.stringify(state, null, 2));
       
-      // Upload to remote
+      // Upload to remote (uploadFile will handle directory creation)
       await client.uploadFile(tempFile, remoteStateFile);
       
       // Clean up temp file

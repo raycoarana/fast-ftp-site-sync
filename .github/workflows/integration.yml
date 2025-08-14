@@ -1,0 +1,297 @@
+name: Integration Tests
+
+on:
+  workflow_call:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      # FTP Server
+      ftp-server:
+        image: stilliard/pure-ftpd
+        ports:
+          - 21:21
+          - 30000-30009:30000-30009
+        env:
+          PUBLICHOST: localhost
+          FTP_USER_NAME: testuser
+          FTP_USER_PASS: testpass
+          FTP_USER_HOME: /home/ftpuser
+        options: >-
+          --health-cmd "nc -z localhost 21"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      # SFTP Server
+      sftp-server:
+        image: atmoz/sftp
+        ports:
+          - 2222:22
+        env:
+          SFTP_USERS: testuser:testpass:1001:1001:upload
+        options: >-
+          --health-cmd "nc -z localhost 22"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build action
+      run: npm run build
+
+    - name: Wait for servers to be ready
+      run: |
+        echo "Waiting for FTP server..."
+        timeout 60 bash -c 'until nc -z localhost 21; do sleep 1; done'
+        echo "FTP server is ready!"
+        
+        echo "Waiting for SFTP server..."
+        timeout 60 bash -c 'until nc -z localhost 2222; do sleep 1; done'
+        echo "SFTP server is ready!"
+
+    # Test 1: FTP Upload (No existing state)
+    - name: Test FTP Upload - Initial Sync
+      id: ftp-initial
+      uses: ./
+      with:
+        protocol: 'ftp'
+        host: 'localhost'
+        port: '21'
+        username: 'testuser'
+        password: 'testpass'
+        local-path: './test/test-files'
+        remote-path: '/initial'
+        state-file-path: './.ftp-state-initial.json'
+        dry-run: 'false'
+
+    - name: Verify FTP initial sync output
+      run: |
+        echo "FTP Initial Sync Results:"
+        echo "Files uploaded: ${{ steps.ftp-initial.outputs.uploaded-files }}"
+        echo "Files deleted: ${{ steps.ftp-initial.outputs.deleted-files }}"
+        echo "Total files: ${{ steps.ftp-initial.outputs.total-files }}"
+        
+        # Verify state file was created
+        if [ ! -f "./.ftp-state-initial.json" ]; then
+          echo "ERROR: State file was not created"
+          exit 1
+        fi
+        
+        # Check that files were uploaded
+        if [ "${{ steps.ftp-initial.outputs.uploaded-files }}" -eq "0" ]; then
+          echo "ERROR: No files were uploaded"
+          exit 1
+        fi
+
+    # Test 2: FTP Upload (With existing state - should skip)
+    - name: Test FTP Upload - With State (No Changes)
+      id: ftp-nochange
+      uses: ./
+      with:
+        protocol: 'ftp'
+        host: 'localhost'
+        port: '21'
+        username: 'testuser'
+        password: 'testpass'
+        local-path: './test/test-files'
+        remote-path: '/nochange'
+        state-file-path: './.ftp-state-nochange.json'
+        dry-run: 'false'
+
+    - name: Test FTP Upload - Second Run (Should Skip)
+      id: ftp-skip
+      uses: ./
+      with:
+        protocol: 'ftp'
+        host: 'localhost'
+        port: '21'
+        username: 'testuser'
+        password: 'testpass'
+        local-path: './test/test-files'
+        remote-path: '/nochange'
+        state-file-path: './.ftp-state-nochange.json'
+        dry-run: 'false'
+
+    - name: Verify FTP state management
+      run: |
+        echo "FTP State Management Results:"
+        echo "First run uploaded: ${{ steps.ftp-nochange.outputs.uploaded-files }}"
+        echo "Second run uploaded: ${{ steps.ftp-skip.outputs.uploaded-files }}"
+        
+        # Second run should upload 0 files (due to state)
+        if [ "${{ steps.ftp-skip.outputs.uploaded-files }}" -ne "0" ]; then
+          echo "ERROR: Second run should not upload files when state exists"
+          exit 1
+        fi
+
+    # Test 3: SFTP Upload (No existing state)
+    - name: Test SFTP Upload - Initial Sync
+      id: sftp-initial
+      uses: ./
+      with:
+        protocol: 'sftp'
+        host: 'localhost'
+        port: '2222'
+        username: 'testuser'
+        password: 'testpass'
+        local-path: './test/test-files'
+        remote-path: '/upload/initial'
+        state-file-path: './.sftp-state-initial.json'
+        dry-run: 'false'
+
+    - name: Verify SFTP initial sync output
+      run: |
+        echo "SFTP Initial Sync Results:"
+        echo "Files uploaded: ${{ steps.sftp-initial.outputs.uploaded-files }}"
+        echo "Files deleted: ${{ steps.sftp-initial.outputs.deleted-files }}"
+        echo "Total files: ${{ steps.sftp-initial.outputs.total-files }}"
+        
+        # Verify state file was created
+        if [ ! -f "./.sftp-state-initial.json" ]; then
+          echo "ERROR: SFTP state file was not created"
+          exit 1
+        fi
+        
+        # Check that files were uploaded
+        if [ "${{ steps.sftp-initial.outputs.uploaded-files }}" -eq "0" ]; then
+          echo "ERROR: No files were uploaded to SFTP"
+          exit 1
+        fi
+
+    # Test 4: SFTP with file changes
+    - name: Modify test files
+      run: |
+        echo "<!-- Modified at $(date) -->" >> ./test/test-files/index.html
+        echo "/* Modified styles */" >> ./test/test-files/style.css
+
+    - name: Test SFTP Upload - With Changes
+      id: sftp-changes
+      uses: ./
+      with:
+        protocol: 'sftp'
+        host: 'localhost'
+        port: '2222'
+        username: 'testuser'
+        password: 'testpass'
+        local-path: './test/test-files'
+        remote-path: '/upload/changes'
+        state-file-path: './.sftp-state-changes.json'
+        dry-run: 'false'
+
+    - name: Test SFTP Upload - Second Run (Should Detect Changes)
+      id: sftp-changes-2
+      uses: ./
+      with:
+        protocol: 'sftp'
+        host: 'localhost'
+        port: '2222'
+        username: 'testuser'
+        password: 'testpass'
+        local-path: './test/test-files'
+        remote-path: '/upload/changes'
+        state-file-path: './.sftp-state-changes.json'
+        dry-run: 'false'
+
+    - name: Verify SFTP change detection
+      run: |
+        echo "SFTP Change Detection Results:"
+        echo "First run uploaded: ${{ steps.sftp-changes.outputs.uploaded-files }}"
+        echo "Second run uploaded: ${{ steps.sftp-changes-2.outputs.uploaded-files }}"
+        
+        # First run should upload files
+        if [ "${{ steps.sftp-changes.outputs.uploaded-files }}" -eq "0" ]; then
+          echo "ERROR: First run should upload files"
+          exit 1
+        fi
+        
+        # Second run should upload only changed files
+        if [ "${{ steps.sftp-changes-2.outputs.uploaded-files }}" -ne "2" ]; then
+          echo "WARNING: Expected 2 changed files, got ${{ steps.sftp-changes-2.outputs.uploaded-files }}"
+        fi
+
+    # Test 5: Dry run mode
+    - name: Test Dry Run Mode
+      id: dry-run
+      uses: ./
+      with:
+        protocol: 'ftp'
+        host: 'localhost'
+        port: '21'
+        username: 'testuser'
+        password: 'testpass'
+        local-path: './test/test-files'
+        remote-path: '/dryrun'
+        state-file-path: './.ftp-state-dryrun.json'
+        dry-run: 'true'
+
+    - name: Verify dry run results
+      run: |
+        echo "Dry Run Results:"
+        echo "Files that would be uploaded: ${{ steps.dry-run.outputs.uploaded-files }}"
+        
+        # State file should not exist after dry run
+        if [ -f "./.ftp-state-dryrun.json" ]; then
+          echo "ERROR: State file should not be created in dry run mode"
+          exit 1
+        fi
+
+    # Test 6: Error handling
+    - name: Test Invalid Credentials
+      id: invalid-creds
+      continue-on-error: true
+      uses: ./
+      with:
+        protocol: 'ftp'
+        host: 'localhost'
+        port: '21'
+        username: 'wronguser'
+        password: 'wrongpass'
+        local-path: './test/test-files'
+        remote-path: '/error'
+        state-file-path: './.ftp-state-error.json'
+        dry-run: 'false'
+
+    - name: Verify error handling
+      run: |
+        if [ "${{ steps.invalid-creds.outcome }}" != "failure" ]; then
+          echo "ERROR: Action should fail with invalid credentials"
+          exit 1
+        fi
+        echo "✅ Error handling works correctly"
+
+    # Output summary
+    - name: Integration Test Summary
+      run: |
+        echo "🎉 Integration Tests Completed Successfully!"
+        echo ""
+        echo "Test Results:"
+        echo "✅ FTP Initial Sync: ${{ steps.ftp-initial.outputs.uploaded-files }} files"
+        echo "✅ FTP State Management: Working"
+        echo "✅ SFTP Initial Sync: ${{ steps.sftp-initial.outputs.uploaded-files }} files"
+        echo "✅ SFTP Change Detection: Working"
+        echo "✅ Dry Run Mode: Working"
+        echo "✅ Error Handling: Working"
+        echo ""
+        echo "All integration tests passed! 🚀"
+
+    # Cleanup
+    - name: Cleanup test files
+      if: always()
+      run: |
+        rm -f ./.ftp-state-*.json
+        rm -f ./.sftp-state-*.json

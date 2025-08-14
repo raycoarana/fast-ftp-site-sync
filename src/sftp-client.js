@@ -65,6 +65,16 @@ class SshSftpClient {
     if (dirPath === '/' || dirPath === '.') return;
     
     try {
+      // Check if directory already exists
+      try {
+        const stat = await this.client.stat(dirPath);
+        if (stat.isDirectory()) {
+          return; // Directory already exists
+        }
+      } catch (statError) {
+        // Directory doesn't exist, create it
+      }
+      
       await this.client.mkdir(dirPath, true); // recursive mkdir
     } catch (error) {
       // Directory might already exist, ignore error

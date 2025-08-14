@@ -36,3 +36,7 @@ jobs:
     
     - name: Build
       run: npm run build
+
+  integration:
+    needs: test
+    uses: ./.github/workflows/integration.yml

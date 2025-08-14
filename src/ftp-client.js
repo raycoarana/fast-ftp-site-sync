@@ -24,11 +24,33 @@ class FtpClient {
 
   async uploadFile(localPath, remotePath) {
     try {
-      // Ensure remote directory exists
-      const remoteDir = path.dirname(remotePath);
-      await this.ensureRemoteDir(remoteDir);
+      const remoteDir = path.posix.dirname(remotePath);
+      const remoteFileName = path.posix.basename(remotePath);
       
-      await this.client.uploadFrom(localPath, remotePath);
+      // Save current directory
+      const originalDir = await this.client.pwd();
+      
+      try {
+        if (remoteDir !== '.' && remoteDir !== '/' && remoteDir !== '') {
+          // Create directory structure manually
+          await this.ensureRemoteDir(remoteDir);
+          
+          // Change to the target directory
+          await this.client.cd(remoteDir);
+          
+          // Upload using just the filename
+          await this.client.uploadFrom(localPath, remoteFileName);
+        } else {
+          // Upload directly to root
+          await this.client.uploadFrom(localPath, remoteFileName);
+        }
+      } finally {
+        // Always return to original directory
+        if (remoteDir !== '.' && remoteDir !== '/' && remoteDir !== '') {
+          await this.client.cd(originalDir);
+        }
+      }
+      
     } catch (error) {
       throw new Error(`Failed to upload file ${localPath}: ${error.message}`);
     }
@@ -56,10 +78,35 @@ class FtpClient {
   }
 
   async ensureRemoteDir(dirPath) {
-    if (dirPath === '/' || dirPath === '.') return;
+    if (dirPath === '/' || dirPath === '.' || dirPath === '') return;
     
     try {
-      await this.client.ensureDir(dirPath);
+      // Split path and create directories recursively using MKD
+      const parts = dirPath.split('/').filter(part => part !== '');
+      let currentPath = '';
+      
+      for (const part of parts) {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        
+        try {
+          // Try to change to the directory to see if it exists
+          await this.client.cd(currentPath);
+          // Go back to root
+          await this.client.cd('/');
+        } catch (cdError) {
+          // Directory doesn't exist, create it using MKD
+          try {
+            await this.client.send('MKD ' + currentPath);
+          } catch (mkdError) {
+            // If directory already exists, that's okay
+            if (mkdError.code === 550 && mkdError.message.includes('exists')) {
+              // Directory already exists, continue
+            } else {
+              throw mkdError;
+            }
+          }
+        }
+      }
     } catch (error) {
       throw new Error(`Failed to create remote directory ${dirPath}: ${error.message}`);
     }

@@ -8,7 +8,10 @@
     "test": "jest",
     "lint": "eslint src/**/*.js",
     "format": "prettier --write src/**/*.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test:integration:setup": "./test/start-test-servers.sh",
+    "test:integration:local": "./test/run-local-test.sh",
+    "test:integration:cleanup": "docker compose -f docker-compose.test.yml down"
   },
   "repository": {
     "type": "git",

@@ -1,0 +1,12 @@
+{
+  "name": "test-website",
+  "version": "1.0.0",
+  "description": "Test files for FTP/SFTP sync",
+  "files": [
+    "index.html",
+    "style.css", 
+    "script.js",
+    "assets/logo.txt"
+  ],
+  "lastUpdated": "2025-08-14T00:00:00Z"
+}
