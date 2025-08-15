@@ -2,25 +2,22 @@
 
 set -e
 
-# Comprehensive integration test script that works both locally and in CI
-# Usage: ./test/integration-test.sh [test-env]
-# test-env: 'local' or 'ci' (default: 'local')
+# Comprehensive integration test script
+# Usage: ./test/integration-test.sh
 
-TEST_ENV=${1:-local}
 BASE_DIR=$(dirname "$0")/..
 
-echo "🧪 Comprehensive Integration Tests (Environment: $TEST_ENV)"
+echo "🧪 Comprehensive Integration Tests"
 
 # Build the action
 echo "📦 Building action..."
 cd "$BASE_DIR"
 npm run build
 
-# Shared configuration (no differences between local and CI)
+# Configuration
 MOUNT_PREFIX="${GITHUB_WORKSPACE:-$PWD}"
 
 echo "📋 Test Configuration:"
-echo "  Environment: $TEST_ENV"
 echo "  Mount Prefix: $MOUNT_PREFIX"
 
 # Test counters
@@ -29,35 +26,34 @@ TESTS_FAILED=0
 
 # Setup test directories for both environments
 echo "🔧 Setting up test directories..."
-mkdir -p "$MOUNT_PREFIX/test-ftp-data" "$MOUNT_PREFIX/test-sftp-data"
-chmod 755 "$MOUNT_PREFIX/test-ftp-data" "$MOUNT_PREFIX/test-sftp-data"
+# Create test data directories for Docker bind mount
+mkdir -p "$MOUNT_PREFIX/test/test-data/ftp" "$MOUNT_PREFIX/test/test-data/sftp"
+chmod 755 "$MOUNT_PREFIX/test/test-data/ftp" "$MOUNT_PREFIX/test/test-data/sftp"
 
-# Start Docker services in local environment
-if [ "$TEST_ENV" = "local" ]; then
-    echo "🐳 Starting Docker services for local testing..."
-    
-    # Stop any existing containers
-    docker compose -f docker-compose.yml down 2>/dev/null || true
-    
-    # Start services
-    docker compose -f docker-compose.yml up -d
-    
-    # Fix SFTP permissions after container starts
-    echo "🔧 Fixing SFTP permissions..."
-    sleep 2
-    docker exec test-sftp-server chown -R 1001:1001 /home/testuser/upload 2>/dev/null || true
-    
-    # Wait for services to be ready
-    echo "⏳ Waiting for services to be ready..."
-    timeout 120 bash -c 'until nc -z localhost 21; do echo "FTP not ready, waiting..."; sleep 2; done'
-    echo "✅ FTP server ready"
-    
-    timeout 120 bash -c 'until nc -z localhost 2222; do echo "SFTP not ready, waiting..."; sleep 2; done'
-    echo "✅ SFTP server ready"
-    
-    echo "⏱️  Giving services additional time to initialize..."
-    sleep 5
-fi
+# Start Docker services
+echo "🐳 Starting Docker services..."
+
+# Stop any existing containers
+docker compose -f docker-compose.yml down 2>/dev/null || true
+
+# Start services
+docker compose -f docker-compose.yml up -d
+
+# Fix SFTP permissions after container starts
+echo "🔧 Fixing SFTP permissions..."
+sleep 2
+docker exec test-sftp-server chown -R 1001:1001 /home/testuser/upload 2>/dev/null || true
+
+# Wait for services to be ready
+echo "⏳ Waiting for services to be ready..."
+timeout 120 bash -c 'until nc -z localhost 21; do echo "FTP not ready, waiting..."; sleep 2; done'
+echo "✅ FTP server ready"
+
+timeout 120 bash -c 'until nc -z localhost 2222; do echo "SFTP not ready, waiting..."; sleep 2; done'
+echo "✅ SFTP server ready"
+
+echo "⏱️  Giving services additional time to initialize..."
+sleep 5
 
 # Function to run action and capture outputs
 run_action() {
@@ -124,18 +120,10 @@ verify_files() {
     
     # Determine mount path (same logic for both local and CI)
     local mount_path
-    if [ "$protocol" = "ftp" ]; then
-        if [[ "$remote_path" == /* ]]; then
-            mount_path="$MOUNT_PREFIX/test-ftp-data$remote_path"
-        else
-            mount_path="$MOUNT_PREFIX/test-ftp-data/$remote_path"
-        fi
+    if [[ "$remote_path" == /* ]]; then
+        mount_path="$MOUNT_PREFIX/test/test-data/$protocol$remote_path"
     else
-        if [[ "$remote_path" == /* ]]; then
-            mount_path="$MOUNT_PREFIX/test-sftp-data$remote_path"
-        else
-            mount_path="$MOUNT_PREFIX/test-sftp-data/$remote_path"
-        fi
+        mount_path="$MOUNT_PREFIX/test/test-data/$protocol/$remote_path"
     fi
     
     echo "🔍 Verifying $protocol files in: $mount_path"
@@ -205,12 +193,7 @@ run_protocol_tests() {
     fi
 
     # Verify state file was created (should exist on remote server)
-    local expected_state_file
-    if [ "$protocol" = "ftp" ]; then
-        expected_state_file="$MOUNT_PREFIX/test-ftp-data/initial/.${protocol,,}-state-initial.json"
-    else
-        expected_state_file="$MOUNT_PREFIX/test-sftp-data/initial/.${protocol,,}-state-initial.json"
-    fi
+    local expected_state_file="$MOUNT_PREFIX/test/test-data/$protocol/initial/.${protocol,,}-state-initial.json"
     
     if [ -f "$expected_state_file" ]; then
         echo "✅ $protocol state file created on remote server"
@@ -276,12 +259,7 @@ run_protocol_tests() {
     check_output_pattern "$protocol Dry Run" "DRY RUN" "Dry run mode active"
 
     # State file should not exist after dry run (check remote server)
-    local expected_dry_run_state
-    if [ "$protocol" = "ftp" ]; then
-        expected_dry_run_state="$MOUNT_PREFIX/test-ftp-data/dryrun/.${protocol,,}-state-dryrun.json"
-    else
-        expected_dry_run_state="$MOUNT_PREFIX/test-sftp-data/dryrun/.${protocol,,}-state-dryrun.json"
-    fi
+    local expected_dry_run_state="$MOUNT_PREFIX/test/test-data/$protocol/dryrun/.${protocol,,}-state-dryrun.json"
     
     if [ ! -f "$expected_dry_run_state" ]; then
         echo "✅ $protocol Dry run: State file correctly NOT created on remote server"
@@ -343,8 +321,8 @@ rm -f ./.ftp-*.json ./.sftp-*.json
 
 # Clean up any existing test data on servers (both environments use bind mounts)
 echo "🗑️  Cleaning up server test data..."
-rm -rf "$MOUNT_PREFIX/test-ftp-data"/* 2>/dev/null || true
-rm -rf "$MOUNT_PREFIX/test-sftp-data"/* 2>/dev/null || true
+rm -rf "$MOUNT_PREFIX/test/test-data/ftp"/* 2>/dev/null || true
+rm -rf "$MOUNT_PREFIX/test/test-data/sftp"/* 2>/dev/null || true
 
 echo ""
 echo "==============================================="
@@ -391,21 +369,16 @@ fi
 
 echo ""
 echo "=== State Files Created on Remote Servers ==="
-echo "FTP state files:"
-find "$MOUNT_PREFIX/test-ftp-data" -name "*.json" 2>/dev/null || echo "No FTP state files found"
-echo "SFTP state files:"
-find "$MOUNT_PREFIX/test-sftp-data" -name "*.json" 2>/dev/null || echo "No SFTP state files found"
+echo "All state files:"
+find "$MOUNT_PREFIX/test/test-data" -name "*.json" 2>/dev/null || echo "No state files found"
 
 echo ""
 echo "🧹 Cleaning up test state files..."
 rm -f ./.ftp-*.json ./.sftp-*.json
 
-# Cleanup Docker services in local environment
-if [ "$TEST_ENV" = "local" ]; then
-    echo "🐳 Stopping Docker services..."
-    docker compose -f docker-compose.yml down
-fi
+echo "🐳 Stopping Docker services..."
+docker compose -f docker-compose.yml down
 
 echo ""
 echo "🎯 Integration testing complete!"
-echo "Both local and CI environments tested with comprehensive coverage."
+echo "Comprehensive coverage tested successfully."

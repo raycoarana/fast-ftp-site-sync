@@ -140,5 +140,4 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # Test data directories (created by integration tests)
-test-ftp-data/
-test-sftp-data/
+test/test-data/

@@ -9,7 +9,7 @@
     "lint": "eslint src/**/*.js",
     "format": "prettier --write src/**/*.js",
     "prepare": "npm run build",
-    "test:integration:local": "./test/integration-test.sh local",
+    "test:integration:local": "./test/integration-test.sh",
     "test:integration:cleanup": "docker compose -f docker-compose.yml down"
   },
   "repository": {

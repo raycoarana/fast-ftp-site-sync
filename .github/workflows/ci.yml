@@ -38,5 +38,26 @@ jobs:
       run: npm run build
 
   integration:
-    needs: test
-    uses: ./.github/workflows/integration.yml
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run Integration Tests
+      run: ./test/integration-test.sh
+
+    # Cleanup
+    - name: Cleanup test files
+      if: always()
+      run: |
+        rm -f ./.ftp-*.json
+        rm -f ./.sftp-*.json
+        rm -rf ${{ github.workspace }}/test/test-data
