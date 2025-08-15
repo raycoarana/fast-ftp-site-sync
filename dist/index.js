@@ -58360,30 +58360,27 @@ class SshSftpClient {
 
   async ensureRemoteDir(dirPath) {
     console.log(`📂 [SFTP] ensureRemoteDir called with: "${dirPath}"`);
-    console.log(`📂 [SFTP] dirPath type: ${typeof dirPath}, length: ${dirPath?.length}`);
     
     if (dirPath === '/' || dirPath === '.') {
       console.log(`📂 [SFTP] Skipping root or current directory: "${dirPath}"`);
       return;
     }
-    
-    console.log(`📂 [SFTP] Processing directory path: "${dirPath}"`);
-    
+
     try {
       // Check if directory already exists
       try {
         console.log(`🔍 [SFTP] Checking if directory exists with stat: "${dirPath}"`);
         const stat = await this.client.stat(dirPath);
         console.log(`📊 [SFTP] Stat result for "${dirPath}":`, {
-          isDirectory: stat.isDirectory(),
-          isFile: stat.isFile(),
+          isDirectory: stat.isDirectory,
+          isFile: stat.isFile,
           mode: stat.mode?.toString(8),
           size: stat.size,
           uid: stat.uid,
           gid: stat.gid
         });
         
-        if (stat.isDirectory()) {
+        if (stat.isDirectory) {
           console.log(`✅ [SFTP] Directory already exists: "${dirPath}"`);
           return; // Directory already exists
         } else {
