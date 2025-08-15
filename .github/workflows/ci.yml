@@ -53,11 +53,3 @@ jobs:
 
     - name: Run Integration Tests
       run: ./test/integration-test.sh
-
-    # Cleanup
-    - name: Cleanup test files
-      if: always()
-      run: |
-        rm -f ./.ftp-*.json
-        rm -f ./.sftp-*.json
-        rm -rf ${{ github.workspace }}/test/test-data
