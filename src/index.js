@@ -46,6 +46,7 @@ async function run() {
     // Create client based on protocol
     let client;
     if (protocol === 'sftp') {
+      core.info(`🔧 [DEBUG] Creating SFTP client with compression: ${compression}`);
       client = new SftpClient({
         host,
         port,
@@ -55,6 +56,7 @@ async function run() {
         compression
       });
     } else {
+      core.info(`🔧 [DEBUG] Creating FTP client`);
       client = new FtpClient({
         host,
         port,
@@ -64,6 +66,7 @@ async function run() {
     }
 
     // Connect to server
+    core.info(`🔗 [DEBUG] Connecting to ${protocol.toUpperCase()} server...`);
     await client.connect();
     core.info(`Connected to ${protocol.toUpperCase()} server ${host}:${port}`);
 
@@ -102,6 +105,7 @@ async function run() {
         if (dryRun) {
           core.info(`[DRY RUN] Would upload (${fileInfo.action}): ${localFilePath} -> ${remoteFilePath}`);
         } else {
+          core.info(`🚀 [DEBUG] Starting upload (${fileInfo.action}): ${localFilePath} -> ${remoteFilePath}`);
           await client.uploadFile(localFilePath, remoteFilePath);
           core.info(`Uploaded (${fileInfo.action}): ${localFilePath} -> ${remoteFilePath}`);
           filesUploaded++;
