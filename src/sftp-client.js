@@ -22,6 +22,11 @@ class SshSftpClient {
         connectConfig.password = this.config.password;
       }
 
+      // Enable compression if requested (default: true)
+      if (this.config.compression !== false) {
+        connectConfig.compress = true;
+      }
+
       await this.client.connect(connectConfig);
     } catch (error) {
       throw new Error(`Failed to connect to SFTP server: ${error.message}`);

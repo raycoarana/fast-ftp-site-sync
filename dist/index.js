@@ -58663,6 +58663,11 @@ class SshSftpClient {
         connectConfig.password = this.config.password;
       }
 
+      // Enable compression if requested (default: true)
+      if (this.config.compression !== false) {
+        connectConfig.compress = true;
+      }
+
       await this.client.connect(connectConfig);
     } catch (error) {
       throw new Error(`Failed to connect to SFTP server: ${error.message}`);
@@ -68874,6 +68879,7 @@ async function run() {
     const deleteOrphaned = core.getInput('delete-orphaned') === 'true' || core.getInput('delete_orphaned') === 'true';
     const stateFilePath = core.getInput('state-file-path') || core.getInput('state_file_path') || '.ftp-sync-state.json';
     const forceFullSync = core.getInput('force-full-sync') === 'true' || core.getInput('force_full_sync') === 'true';
+    const compression = core.getInput('compression') !== 'false'; // Default to true unless explicitly set to 'false'
     
     core.info(`Starting ${protocol.toUpperCase()} sync from ${localPath} to ${remotePath}`);
     
@@ -68903,7 +68909,8 @@ async function run() {
         port,
         username,
         password,
-        privateKey
+        privateKey,
+        compression
       });
     } else {
       client = new FtpClient({

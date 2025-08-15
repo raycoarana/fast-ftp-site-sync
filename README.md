@@ -85,6 +85,7 @@ jobs:
 | `delete-orphaned` | Delete files on remote that don't exist locally | ❌ | `false` |
 | `state-file-path` | Path to the state file on remote server | ❌ | `.ftp-sync-state.json` |
 | `force-full-sync` | Force full sync ignoring remote state file | ❌ | `false` |
+| `compression` | Enable compression for SFTP transfers (ignored for FTP) | ❌ | `true` |
 
 ## Outputs
 

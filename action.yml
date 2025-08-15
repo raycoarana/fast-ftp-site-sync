@@ -50,6 +50,10 @@ inputs:
     description: 'Force full sync ignoring remote state file'
     required: false
     default: 'false'
+  compression:
+    description: 'Enable compression for SFTP transfers (ignored for FTP)'
+    required: false
+    default: 'true'
 
 outputs:
   files-uploaded:
