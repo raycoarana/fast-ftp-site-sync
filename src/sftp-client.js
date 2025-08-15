@@ -22,6 +22,11 @@ class SshSftpClient {
         connectConfig.password = this.config.password;
       }
 
+      // Enable compression if requested (default: true)
+      if (this.config.compression !== false) {
+        connectConfig.compress = true;
+      }
+
       await this.client.connect(connectConfig);
     } catch (error) {
       throw new Error(`Failed to connect to SFTP server: ${error.message}`);
@@ -65,6 +70,16 @@ class SshSftpClient {
     if (dirPath === '/' || dirPath === '.') return;
     
     try {
+      // Check if directory already exists
+      try {
+        const stat = await this.client.stat(dirPath);
+        if (stat.isDirectory()) {
+          return; // Directory already exists
+        }
+      } catch (_statError) {
+        // Directory doesn't exist, create it
+      }
+      
       await this.client.mkdir(dirPath, true); // recursive mkdir
     } catch (error) {
       // Directory might already exist, ignore error
@@ -78,7 +93,7 @@ class SshSftpClient {
     try {
       const files = [];
       
-      async function listRecursive(client, currentPath) {
+      const listRecursive = async (client, currentPath) => {
         const list = await client.list(currentPath);
         
         for (const item of list) {
@@ -90,7 +105,7 @@ class SshSftpClient {
             await listRecursive(client, itemPath);
           }
         }
-      }
+      };
       
       await listRecursive(this.client, remotePath);
       return files;
@@ -110,7 +125,7 @@ class SshSftpClient {
   async disconnect() {
     try {
       await this.client.end();
-    } catch (error) {
+    } catch (_error) {
       // Ignore disconnection errors
     }
   }

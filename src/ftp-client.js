@@ -9,26 +9,58 @@ class FtpClient {
   }
 
   async connect() {
+    const connectPromise = this.client.access({
+      host: this.config.host,
+      port: this.config.port,
+      user: this.config.username,
+      password: this.config.password,
+      secure: false // Use true for FTPS
+    });
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Connection timeout after 10 seconds'));
+      }, 10000);
+    });
+
     try {
-      await this.client.access({
-        host: this.config.host,
-        port: this.config.port,
-        user: this.config.username,
-        password: this.config.password,
-        secure: false // Use true for FTPS
-      });
+      await Promise.race([connectPromise, timeoutPromise]);
     } catch (error) {
+      // Ensure client is closed on error
+      this.client.close();
       throw new Error(`Failed to connect to FTP server: ${error.message}`);
     }
   }
 
   async uploadFile(localPath, remotePath) {
     try {
-      // Ensure remote directory exists
-      const remoteDir = path.dirname(remotePath);
-      await this.ensureRemoteDir(remoteDir);
+      const remoteDir = path.posix.dirname(remotePath);
+      const remoteFileName = path.posix.basename(remotePath);
       
-      await this.client.uploadFrom(localPath, remotePath);
+      // Save current directory
+      const originalDir = await this.client.pwd();
+      
+      try {
+        if (remoteDir !== '.' && remoteDir !== '/' && remoteDir !== '') {
+          // Create directory structure manually
+          await this.ensureRemoteDir(remoteDir);
+          
+          // Change to the target directory
+          await this.client.cd(remoteDir);
+          
+          // Upload using just the filename
+          await this.client.uploadFrom(localPath, remoteFileName);
+        } else {
+          // Upload directly to root
+          await this.client.uploadFrom(localPath, remoteFileName);
+        }
+      } finally {
+        // Always return to original directory
+        if (remoteDir !== '.' && remoteDir !== '/' && remoteDir !== '') {
+          await this.client.cd(originalDir);
+        }
+      }
+      
     } catch (error) {
       throw new Error(`Failed to upload file ${localPath}: ${error.message}`);
     }
@@ -56,10 +88,35 @@ class FtpClient {
   }
 
   async ensureRemoteDir(dirPath) {
-    if (dirPath === '/' || dirPath === '.') return;
+    if (dirPath === '/' || dirPath === '.' || dirPath === '') return;
     
     try {
-      await this.client.ensureDir(dirPath);
+      // Split path and create directories recursively using MKD
+      const parts = dirPath.split('/').filter(part => part !== '');
+      let currentPath = '';
+      
+      for (const part of parts) {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        
+        try {
+          // Try to change to the directory to see if it exists
+          await this.client.cd(currentPath);
+          // Go back to root
+          await this.client.cd('/');
+        } catch (_cdError) {
+          // Directory doesn't exist, create it using MKD
+          try {
+            await this.client.send('MKD ' + currentPath);
+          } catch (mkdError) {
+            // If directory already exists, that's okay
+            if (mkdError.code === 550 && mkdError.message.includes('exists')) {
+              // Directory already exists, continue
+            } else {
+              throw mkdError;
+            }
+          }
+        }
+      }
     } catch (error) {
       throw new Error(`Failed to create remote directory ${dirPath}: ${error.message}`);
     }
@@ -69,7 +126,7 @@ class FtpClient {
     try {
       const files = [];
       
-      async function listRecursive(client, currentPath) {
+      const listRecursive = async (client, currentPath) => {
         const list = await client.list(currentPath);
         
         for (const item of list) {
@@ -81,7 +138,7 @@ class FtpClient {
             await listRecursive(client, itemPath);
           }
         }
-      }
+      };
       
       await listRecursive(this.client, remotePath);
       return files;
@@ -101,7 +158,7 @@ class FtpClient {
   async disconnect() {
     try {
       this.client.close();
-    } catch (error) {
+    } catch (_error) {
       // Ignore disconnection errors
     }
   }
