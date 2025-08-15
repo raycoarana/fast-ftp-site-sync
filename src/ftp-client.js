@@ -6,6 +6,8 @@ class FtpClient {
   constructor(config) {
     this.config = config;
     this.client = new ftp.Client();
+    // Default timeout is 10 seconds, but can be configured
+    this.timeout = config.timeout || 10000;
   }
 
   async connect() {
@@ -19,8 +21,8 @@ class FtpClient {
 
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => {
-        reject(new Error('Connection timeout after 10 seconds'));
-      }, 10000);
+        reject(new Error(`Connection timeout after ${this.timeout / 1000} seconds`));
+      }, this.timeout);
     });
 
     try {

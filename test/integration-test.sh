@@ -193,7 +193,7 @@ run_protocol_tests() {
     fi
 
     # Verify state file was created (should exist on remote server)
-    local expected_state_file="$MOUNT_PREFIX/test/test-data/$protocol/initial/.${protocol,,}-state-initial.json"
+    local expected_state_file="$MOUNT_PREFIX/test/test-data/$protocol/initial/.${protocol,,}-state-initial.json.gz"
     
     if [ -f "$expected_state_file" ]; then
         echo "✅ $protocol state file created on remote server"
@@ -259,7 +259,7 @@ run_protocol_tests() {
     check_output_pattern "$protocol Dry Run" "DRY RUN" "Dry run mode active"
 
     # State file should not exist after dry run (check remote server)
-    local expected_dry_run_state="$MOUNT_PREFIX/test/test-data/$protocol/dryrun/.${protocol,,}-state-dryrun.json"
+    local expected_dry_run_state="$MOUNT_PREFIX/test/test-data/$protocol/dryrun/.${protocol,,}-state-dryrun.json.gz"
     
     if [ ! -f "$expected_dry_run_state" ]; then
         echo "✅ $protocol Dry run: State file correctly NOT created on remote server"
@@ -317,7 +317,7 @@ run_protocol_tests() {
 
 # Cleanup any existing state files and reset test environment
 echo "🧹 Cleaning up any existing state files and server data..."
-rm -f ./.ftp-*.json ./.sftp-*.json
+rm -f ./.ftp-*.json ./.sftp-*.json ./.ftp-*.json.gz ./.sftp-*.json.gz
 
 # Clean up any existing test data on servers (both environments use bind mounts)
 echo "🗑️  Cleaning up server test data..."
@@ -370,11 +370,11 @@ fi
 echo ""
 echo "=== State Files Created on Remote Servers ==="
 echo "All state files:"
-find "$MOUNT_PREFIX/test/test-data" -name "*.json" 2>/dev/null || echo "No state files found"
+find "$MOUNT_PREFIX/test/test-data" -name "*.json*" 2>/dev/null || echo "No state files found"
 
 echo ""
 echo "🧹 Cleaning up test state files..."
-rm -f ./.ftp-*.json ./.sftp-*.json
+rm -f ./.ftp-*.json ./.sftp-*.json ./.ftp-*.json.gz ./.sftp-*.json.gz
 
 echo "🐳 Stopping Docker services..."
 docker compose -f docker-compose.yml down

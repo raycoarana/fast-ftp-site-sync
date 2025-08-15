@@ -12,6 +12,7 @@ A GitHub Action for syncing files to FTP/SFTP remote sites with selective folder
 - 🔍 File exclusion patterns
 - 🧪 Dry run mode for testing
 - 📊 Detailed logging and output metrics
+- 🗜️ SFTP compression support for faster transfers
 
 ## Usage
 
@@ -86,6 +87,7 @@ jobs:
 | `state-file-path` | Path to the state file on remote server | ❌ | `.ftp-sync-state.json` |
 | `force-full-sync` | Force full sync ignoring remote state file | ❌ | `false` |
 | `compression` | Enable compression for SFTP transfers (ignored for FTP) | ❌ | `true` |
+| `timeout` | Connection timeout in milliseconds (applies to FTP connections) | ❌ | `10000` |
 
 ## Outputs
 

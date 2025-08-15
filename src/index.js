@@ -22,6 +22,7 @@ async function run() {
     const stateFilePath = core.getInput('state-file-path') || core.getInput('state_file_path') || '.ftp-sync-state.json';
     const forceFullSync = core.getInput('force-full-sync') === 'true' || core.getInput('force_full_sync') === 'true';
     const compression = core.getInput('compression') !== 'false'; // Default to true unless explicitly set to 'false'
+    const timeout = parseInt(core.getInput('timeout') || '10000'); // Default to 10 seconds
     
     core.info(`Starting ${protocol.toUpperCase()} sync from ${localPath} to ${remotePath}`);
     
@@ -46,6 +47,7 @@ async function run() {
     // Create client based on protocol
     let client;
     if (protocol === 'sftp') {
+      core.info(`🔧 [DEBUG] Creating SFTP client with compression: ${compression}`);
       client = new SftpClient({
         host,
         port,
@@ -55,15 +57,18 @@ async function run() {
         compression
       });
     } else {
+      core.info(`🔧 [DEBUG] Creating FTP client`);
       client = new FtpClient({
         host,
         port,
         username,
-        password
+        password,
+        timeout
       });
     }
 
     // Connect to server
+    core.info(`🔗 [DEBUG] Connecting to ${protocol.toUpperCase()} server...`);
     await client.connect();
     core.info(`Connected to ${protocol.toUpperCase()} server ${host}:${port}`);
 
@@ -94,30 +99,37 @@ async function run() {
       core.info(`Plan: Upload ${summary.toUpload} files, Delete ${summary.toDelete} files`);
 
       // Upload changed/new files
-      for (const fileInfo of comparison.filesToUpload) {
+      const totalFilesToUpload = comparison.filesToUpload.length;
+      for (let i = 0; i < comparison.filesToUpload.length; i++) {
+        const fileInfo = comparison.filesToUpload[i];
+        const progress = `[${i + 1}/${totalFilesToUpload}]`;
+        
         // Resolve relative path to absolute path
         const localFilePath = path.resolve(localPath, fileInfo.localPath);
         const remoteFilePath = path.posix.join(remotePath, fileInfo.remotePath);
         
         if (dryRun) {
-          core.info(`[DRY RUN] Would upload (${fileInfo.action}): ${localFilePath} -> ${remoteFilePath}`);
+          core.info(`${progress} [DRY RUN] Would upload (${fileInfo.action}): ${fileInfo.localPath} -> ${fileInfo.remotePath}`);
         } else {
+          core.info(`${progress} Uploading (${fileInfo.action}): ${fileInfo.localPath} -> ${fileInfo.remotePath}`);
           await client.uploadFile(localFilePath, remoteFilePath);
-          core.info(`Uploaded (${fileInfo.action}): ${localFilePath} -> ${remoteFilePath}`);
           filesUploaded++;
         }
       }
 
       // Handle orphaned files deletion
       if (deleteOrphaned && comparison.filesToDelete.length > 0) {
-        for (const remoteFile of comparison.filesToDelete) {
+        const totalFilesToDelete = comparison.filesToDelete.length;
+        for (let i = 0; i < comparison.filesToDelete.length; i++) {
+          const remoteFile = comparison.filesToDelete[i];
+          const progress = `[${i + 1}/${totalFilesToDelete}]`;
           const fullRemotePath = path.posix.join(remotePath, remoteFile);
           
           if (dryRun) {
-            core.info(`[DRY RUN] Would delete orphaned file: ${fullRemotePath}`);
+            core.info(`${progress} [DRY RUN] Would delete orphaned file: ${remoteFile}`);
           } else {
+            core.info(`${progress} Deleting orphaned file: ${remoteFile}`);
             await client.deleteFile(fullRemotePath);
-            core.info(`Deleted orphaned file: ${fullRemotePath}`);
             filesDeleted++;
           }
         }

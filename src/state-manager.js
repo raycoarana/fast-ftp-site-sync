@@ -1,10 +1,16 @@
 const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
+const zlib = require('zlib');
+const { promisify } = require('util');
+
+const gzip = promisify(zlib.gzip);
+const gunzip = promisify(zlib.gunzip);
 
 class StateManager {
   constructor(stateFilePath = '.ftp-sync-state.json') {
     this.stateFilePath = stateFilePath;
+    this.gzippedStateFilePath = stateFilePath + '.gz';
     this.currentState = {
       version: '1.0.0',
       lastSync: null,
@@ -50,24 +56,41 @@ class StateManager {
   }
 
   /**
-   * Download and parse remote state file
+   * Download and parse remote state file (supports both gzipped and plain JSON)
    */
   async downloadRemoteState(client, remotePath) {
     try {
-      const remoteStateFile = path.posix.join(remotePath, this.stateFilePath);
+      const gzippedStateFile = path.posix.join(remotePath, this.gzippedStateFilePath);
+      const plainStateFile = path.posix.join(remotePath, this.stateFilePath);
       
-      // Check if state file exists
-      const exists = await this.remoteFileExists(client, remoteStateFile);
-      if (!exists) {
-        return null;
+      // Try gzipped version first, then fall back to plain JSON for backward compatibility
+      let remoteStateFile;
+      let isCompressed = false;
+      
+      if (await this.remoteFileExists(client, gzippedStateFile)) {
+        remoteStateFile = gzippedStateFile;
+        isCompressed = true;
+      } else if (await this.remoteFileExists(client, plainStateFile)) {
+        remoteStateFile = plainStateFile;
+        isCompressed = false;
+      } else {
+        return null; // No state file found
       }
 
       // Download state file to temporary location
-      const tempFile = path.join(require('os').tmpdir(), `remote-state-${Date.now()}.json`);
+      const tempFile = path.join(require('os').tmpdir(), `remote-state-${Date.now()}${isCompressed ? '.gz' : '.json'}`);
       await client.downloadFile(remoteStateFile, tempFile);
       
-      // Parse and return state
-      const stateContent = await fs.readFile(tempFile, 'utf8');
+      // Read and parse state
+      let stateContent;
+      if (isCompressed) {
+        const compressedData = await fs.readFile(tempFile);
+        const decompressedData = await gunzip(compressedData);
+        stateContent = decompressedData.toString('utf8');
+      } else {
+        stateContent = await fs.readFile(tempFile, 'utf8');
+      }
+      
       await fs.unlink(tempFile); // Clean up temp file
       
       return JSON.parse(stateContent);
@@ -78,21 +101,37 @@ class StateManager {
   }
 
   /**
-   * Upload state file to remote server
+   * Upload state file to remote server (always compressed for space efficiency)
    */
   async uploadState(client, state, remotePath) {
     try {
-      const remoteStateFile = path.posix.join(remotePath, this.stateFilePath);
-      const tempFile = path.join(require('os').tmpdir(), `local-state-${Date.now()}.json`);
+      const remoteStateFile = path.posix.join(remotePath, this.gzippedStateFilePath);
+      const tempFile = path.join(require('os').tmpdir(), `local-state-${Date.now()}.json.gz`);
       
-      // Write state to temporary file
-      await fs.writeFile(tempFile, JSON.stringify(state, null, 2));
+      // Serialize state to JSON
+      const jsonData = JSON.stringify(state, null, 2);
+      
+      // Compress the JSON data
+      const compressedData = await gzip(Buffer.from(jsonData, 'utf8'));
+      
+      // Write compressed data to temporary file
+      await fs.writeFile(tempFile, compressedData);
       
       // Upload to remote (uploadFile will handle directory creation)
       await client.uploadFile(tempFile, remoteStateFile);
       
       // Clean up temp file
       await fs.unlink(tempFile);
+      
+      // Clean up old plain JSON state file if it exists (migration)
+      try {
+        const oldPlainStateFile = path.posix.join(remotePath, this.stateFilePath);
+        if (await this.remoteFileExists(client, oldPlainStateFile)) {
+          await client.deleteFile(oldPlainStateFile);
+        }
+      } catch (_cleanupError) {
+        // Ignore cleanup errors - not critical
+      }
     } catch (error) {
       throw new Error(`Failed to upload state file: ${error.message}`);
     }

@@ -54,6 +54,10 @@ inputs:
     description: 'Enable compression for SFTP transfers (ignored for FTP)'
     required: false
     default: 'true'
+  timeout:
+    description: 'Connection timeout in milliseconds (applies to FTP connections)'
+    required: false
+    default: '10000'
 
 outputs:
   files-uploaded:
