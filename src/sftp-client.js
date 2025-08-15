@@ -39,9 +39,34 @@ class SshSftpClient {
       const remoteDir = path.dirname(remotePath);
       await this.ensureRemoteDir(remoteDir);
       
-      await this.client.put(localPath, remotePath);
+      // Try to upload the file with overwrite support
+      await this.client.put(localPath, remotePath, { 
+        writeStreamOptions: { flags: 'w' }  // Force overwrite mode
+      });
     } catch (error) {
-      throw new Error(`Failed to upload file ${localPath}: ${error.message}`);
+      // If the upload fails, try to delete the remote file first and retry
+      if (error.message.includes('Write stream error') || error.message.includes('Failure')) {
+        try {
+          // Check if remote file exists and try to delete it
+          const exists = await this.exists(remotePath);
+          if (exists) {
+            await this.client.delete(remotePath);
+            // Retry the upload after deletion
+            await this.client.put(localPath, remotePath, { 
+              writeStreamOptions: { flags: 'w' }
+            });
+          } else {
+            // File doesn't exist, just retry once more
+            await this.client.put(localPath, remotePath, { 
+              writeStreamOptions: { flags: 'w' }
+            });
+          }
+        } catch (retryError) {
+          throw new Error(`Failed to upload file ${localPath} after retry: ${retryError.message}`);
+        }
+      } else {
+        throw new Error(`Failed to upload file ${localPath}: ${error.message}`);
+      }
     }
   }
 

@@ -12,6 +12,7 @@ A GitHub Action for syncing files to FTP/SFTP remote sites with selective folder
 - 🔍 File exclusion patterns
 - 🧪 Dry run mode for testing
 - 📊 Detailed logging and output metrics
+- 🗜️ SFTP compression support for faster transfers
 
 ## Usage
 
