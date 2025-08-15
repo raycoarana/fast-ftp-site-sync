@@ -93,7 +93,8 @@ async function run() {
 
       // Upload changed/new files
       for (const fileInfo of comparison.filesToUpload) {
-        const localFilePath = fileInfo.localPath;
+        // Resolve relative path to absolute path
+        const localFilePath = path.resolve(localPath, fileInfo.localPath);
         const remoteFilePath = path.posix.join(remotePath, fileInfo.remotePath);
         
         if (dryRun) {

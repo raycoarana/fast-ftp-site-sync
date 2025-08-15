@@ -19,6 +19,8 @@ jobs:
           FTP_USER_NAME: testuser
           FTP_USER_PASS: testpass
           FTP_USER_HOME: /home/ftpuser
+        volumes:
+          - ${{ github.workspace }}/test-ftp-data:/home/ftpuser
 
       # SFTP Server
       sftp-server:
@@ -27,6 +29,8 @@ jobs:
           - 2222:22
         env:
           SFTP_USERS: testuser:testpass:1001:1001:upload
+        volumes:
+          - ${{ github.workspace }}/test-sftp-data:/home/testuser/upload
 
     steps:
     - name: Checkout repository
@@ -41,9 +45,6 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Build action
-      run: npm run build
-
     - name: Wait for servers to be ready
       run: |
         echo "Waiting for FTP server..."
@@ -57,234 +58,61 @@ jobs:
         echo "Giving services additional time to fully initialize..."
         sleep 5
 
-    # Test 1: FTP Upload (No existing state)
-    - name: Test FTP Upload - Initial Sync
-      id: ftp-initial
-      uses: ./
-      with:
-        protocol: 'ftp'
-        host: 'localhost'
-        port: '21'
-        username: 'testuser'
-        password: 'testpass'
-        local-path: './test/test-files'
-        remote-path: '/initial'
-        state-file-path: './.ftp-state-initial.json'
-        dry-run: 'false'
+    - name: Run Integration Tests
+      run: ./test/integration-test.sh ci
 
-    - name: Verify FTP initial sync output
+    - name: Verify files in mounted volumes
       run: |
-        echo "FTP Initial Sync Results:"
-        echo "Files uploaded: ${{ steps.ftp-initial.outputs.uploaded-files }}"
-        echo "Files deleted: ${{ steps.ftp-initial.outputs.deleted-files }}"
-        echo "Total files: ${{ steps.ftp-initial.outputs.total-files }}"
+        echo "=== Mounted Volume Verification ==="
+        echo "FTP Server Files:"
+        find ${{ github.workspace }}/test-ftp-data -type f 2>/dev/null | head -20 || echo "No FTP files found"
         
-        # Verify state file was created
-        if [ ! -f "./.ftp-state-initial.json" ]; then
-          echo "ERROR: State file was not created"
-          exit 1
-        fi
-        
-        # Check that files were uploaded
-        if [ "${{ steps.ftp-initial.outputs.uploaded-files }}" -eq "0" ]; then
-          echo "ERROR: No files were uploaded"
-          exit 1
-        fi
-
-    # Test 2: FTP Upload (With existing state - should skip)
-    - name: Test FTP Upload - With State (No Changes)
-      id: ftp-nochange
-      uses: ./
-      with:
-        protocol: 'ftp'
-        host: 'localhost'
-        port: '21'
-        username: 'testuser'
-        password: 'testpass'
-        local-path: './test/test-files'
-        remote-path: '/nochange'
-        state-file-path: './.ftp-state-nochange.json'
-        dry-run: 'false'
-
-    - name: Test FTP Upload - Second Run (Should Skip)
-      id: ftp-skip
-      uses: ./
-      with:
-        protocol: 'ftp'
-        host: 'localhost'
-        port: '21'
-        username: 'testuser'
-        password: 'testpass'
-        local-path: './test/test-files'
-        remote-path: '/nochange'
-        state-file-path: './.ftp-state-nochange.json'
-        dry-run: 'false'
-
-    - name: Verify FTP state management
-      run: |
-        echo "FTP State Management Results:"
-        echo "First run uploaded: ${{ steps.ftp-nochange.outputs.uploaded-files }}"
-        echo "Second run uploaded: ${{ steps.ftp-skip.outputs.uploaded-files }}"
-        
-        # Second run should upload 0 files (due to state)
-        if [ "${{ steps.ftp-skip.outputs.uploaded-files }}" -ne "0" ]; then
-          echo "ERROR: Second run should not upload files when state exists"
-          exit 1
-        fi
-
-    # Test 3: SFTP Upload (No existing state)
-    - name: Test SFTP Upload - Initial Sync
-      id: sftp-initial
-      uses: ./
-      with:
-        protocol: 'sftp'
-        host: 'localhost'
-        port: '2222'
-        username: 'testuser'
-        password: 'testpass'
-        local-path: './test/test-files'
-        remote-path: '/upload/initial'
-        state-file-path: './.sftp-state-initial.json'
-        dry-run: 'false'
-
-    - name: Verify SFTP initial sync output
-      run: |
-        echo "SFTP Initial Sync Results:"
-        echo "Files uploaded: ${{ steps.sftp-initial.outputs.uploaded-files }}"
-        echo "Files deleted: ${{ steps.sftp-initial.outputs.deleted-files }}"
-        echo "Total files: ${{ steps.sftp-initial.outputs.total-files }}"
-        
-        # Verify state file was created
-        if [ ! -f "./.sftp-state-initial.json" ]; then
-          echo "ERROR: SFTP state file was not created"
-          exit 1
-        fi
-        
-        # Check that files were uploaded
-        if [ "${{ steps.sftp-initial.outputs.uploaded-files }}" -eq "0" ]; then
-          echo "ERROR: No files were uploaded to SFTP"
-          exit 1
-        fi
-
-    # Test 4: SFTP with file changes
-    - name: Modify test files
-      run: |
-        echo "<!-- Modified at $(date) -->" >> ./test/test-files/index.html
-        echo "/* Modified styles */" >> ./test/test-files/style.css
-
-    - name: Test SFTP Upload - With Changes
-      id: sftp-changes
-      uses: ./
-      with:
-        protocol: 'sftp'
-        host: 'localhost'
-        port: '2222'
-        username: 'testuser'
-        password: 'testpass'
-        local-path: './test/test-files'
-        remote-path: '/upload/changes'
-        state-file-path: './.sftp-state-changes.json'
-        dry-run: 'false'
-
-    - name: Test SFTP Upload - Second Run (Should Detect Changes)
-      id: sftp-changes-2
-      uses: ./
-      with:
-        protocol: 'sftp'
-        host: 'localhost'
-        port: '2222'
-        username: 'testuser'
-        password: 'testpass'
-        local-path: './test/test-files'
-        remote-path: '/upload/changes'
-        state-file-path: './.sftp-state-changes.json'
-        dry-run: 'false'
-
-    - name: Verify SFTP change detection
-      run: |
-        echo "SFTP Change Detection Results:"
-        echo "First run uploaded: ${{ steps.sftp-changes.outputs.uploaded-files }}"
-        echo "Second run uploaded: ${{ steps.sftp-changes-2.outputs.uploaded-files }}"
-        
-        # First run should upload files
-        if [ "${{ steps.sftp-changes.outputs.uploaded-files }}" -eq "0" ]; then
-          echo "ERROR: First run should upload files"
-          exit 1
-        fi
-        
-        # Second run should upload only changed files
-        if [ "${{ steps.sftp-changes-2.outputs.uploaded-files }}" -ne "2" ]; then
-          echo "WARNING: Expected 2 changed files, got ${{ steps.sftp-changes-2.outputs.uploaded-files }}"
-        fi
-
-    # Test 5: Dry run mode
-    - name: Test Dry Run Mode
-      id: dry-run
-      uses: ./
-      with:
-        protocol: 'ftp'
-        host: 'localhost'
-        port: '21'
-        username: 'testuser'
-        password: 'testpass'
-        local-path: './test/test-files'
-        remote-path: '/dryrun'
-        state-file-path: './.ftp-state-dryrun.json'
-        dry-run: 'true'
-
-    - name: Verify dry run results
-      run: |
-        echo "Dry Run Results:"
-        echo "Files that would be uploaded: ${{ steps.dry-run.outputs.uploaded-files }}"
-        
-        # State file should not exist after dry run
-        if [ -f "./.ftp-state-dryrun.json" ]; then
-          echo "ERROR: State file should not be created in dry run mode"
-          exit 1
-        fi
-
-    # Test 6: Error handling
-    - name: Test Invalid Credentials
-      id: invalid-creds
-      continue-on-error: true
-      uses: ./
-      with:
-        protocol: 'ftp'
-        host: 'localhost'
-        port: '21'
-        username: 'wronguser'
-        password: 'wrongpass'
-        local-path: './test/test-files'
-        remote-path: '/error'
-        state-file-path: './.ftp-state-error.json'
-        dry-run: 'false'
-
-    - name: Verify error handling
-      run: |
-        if [ "${{ steps.invalid-creds.outcome }}" != "failure" ]; then
-          echo "ERROR: Action should fail with invalid credentials"
-          exit 1
-        fi
-        echo "✅ Error handling works correctly"
-
-    # Output summary
-    - name: Integration Test Summary
-      run: |
-        echo "🎉 Integration Tests Completed Successfully!"
         echo ""
-        echo "Test Results:"
-        echo "✅ FTP Initial Sync: ${{ steps.ftp-initial.outputs.uploaded-files }} files"
-        echo "✅ FTP State Management: Working"
-        echo "✅ SFTP Initial Sync: ${{ steps.sftp-initial.outputs.uploaded-files }} files"
-        echo "✅ SFTP Change Detection: Working"
-        echo "✅ Dry Run Mode: Working"
-        echo "✅ Error Handling: Working"
+        echo "SFTP Server Files:"
+        find ${{ github.workspace }}/test-sftp-data -type f 2>/dev/null | head -20 || echo "No SFTP files found"
+        
+        # Verify key test files exist in both servers
         echo ""
-        echo "All integration tests passed! 🚀"
+        echo "=== Critical File Verification ==="
+        
+        # Check FTP files
+        FTP_FILES=("${{ github.workspace }}/test-ftp-data/initial/index.html"
+                   "${{ github.workspace }}/test-ftp-data/initial/assets/logo.txt"
+                   "${{ github.workspace }}/test-ftp-data/nochange/index.html")
+        
+        echo "Checking FTP files..."
+        for file in "${FTP_FILES[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ FTP: $(basename "$file")"
+          else
+            echo "❌ FTP: $(basename "$file") - MISSING"
+            exit 1
+          fi
+        done
+        
+        # Check SFTP files  
+        SFTP_FILES=("${{ github.workspace }}/test-sftp-data/initial/index.html"
+                    "${{ github.workspace }}/test-sftp-data/initial/assets/logo.txt"
+                    "${{ github.workspace }}/test-sftp-data/changes/index.html")
+        
+        echo "Checking SFTP files..."
+        for file in "${SFTP_FILES[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ SFTP: $(basename "$file")"
+          else
+            echo "❌ SFTP: $(basename "$file") - MISSING"
+            exit 1
+          fi
+        done
+        
+        echo ""
+        echo "🎉 All critical files verified in mounted volumes!"
 
     # Cleanup
     - name: Cleanup test files
       if: always()
       run: |
-        rm -f ./.ftp-state-*.json
-        rm -f ./.sftp-state-*.json
+        rm -f ./.ftp-*.json
+        rm -f ./.sftp-*.json
+        rm -rf ${{ github.workspace }}/test-ftp-data
+        rm -rf ${{ github.workspace }}/test-sftp-data

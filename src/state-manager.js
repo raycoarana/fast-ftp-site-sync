@@ -42,7 +42,7 @@ class StateManager {
         hash: hash,
         size: stats.size,
         mtime: stats.mtime.toISOString(),
-        localPath: file.path
+        localPath: file.relativePath  // Store relative path instead of absolute path for security
       };
     }
 

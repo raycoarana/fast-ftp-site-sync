@@ -9,15 +9,25 @@ class FtpClient {
   }
 
   async connect() {
+    const connectPromise = this.client.access({
+      host: this.config.host,
+      port: this.config.port,
+      user: this.config.username,
+      password: this.config.password,
+      secure: false // Use true for FTPS
+    });
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Connection timeout after 10 seconds'));
+      }, 10000);
+    });
+
     try {
-      await this.client.access({
-        host: this.config.host,
-        port: this.config.port,
-        user: this.config.username,
-        password: this.config.password,
-        secure: false // Use true for FTPS
-      });
+      await Promise.race([connectPromise, timeoutPromise]);
     } catch (error) {
+      // Ensure client is closed on error
+      this.client.close();
       throw new Error(`Failed to connect to FTP server: ${error.message}`);
     }
   }

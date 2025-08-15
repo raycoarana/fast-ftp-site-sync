@@ -14,8 +14,7 @@ services:
       FTP_USER_PASS: testpass
       FTP_USER_HOME: /home/ftpuser
     volumes:
-      - ftp-data:/home/ftpuser
-      - ./test/ftp-config:/etc/pure-ftpd/conf
+      - ./test-ftp-data:/home/ftpuser
     restart: unless-stopped
 
   # SFTP Server  
@@ -27,9 +26,5 @@ services:
     environment:
       SFTP_USERS: testuser:testpass:1001:1001:upload
     volumes:
-      - sftp-data:/home/testuser/upload
+      - ./test-sftp-data:/home/testuser/upload
     restart: unless-stopped
-
-volumes:
-  ftp-data:
-  sftp-data:

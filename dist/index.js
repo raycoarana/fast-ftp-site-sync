@@ -58476,15 +58476,25 @@ class FtpClient {
   }
 
   async connect() {
+    const connectPromise = this.client.access({
+      host: this.config.host,
+      port: this.config.port,
+      user: this.config.username,
+      password: this.config.password,
+      secure: false // Use true for FTPS
+    });
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Connection timeout after 10 seconds'));
+      }, 10000);
+    });
+
     try {
-      await this.client.access({
-        host: this.config.host,
-        port: this.config.port,
-        user: this.config.username,
-        password: this.config.password,
-        secure: false // Use true for FTPS
-      });
+      await Promise.race([connectPromise, timeoutPromise]);
     } catch (error) {
+      // Ensure client is closed on error
+      this.client.close();
       throw new Error(`Failed to connect to FTP server: ${error.message}`);
     }
   }
@@ -58560,7 +58570,7 @@ class FtpClient {
           await this.client.cd(currentPath);
           // Go back to root
           await this.client.cd('/');
-        } catch (cdError) {
+        } catch (_cdError) {
           // Directory doesn't exist, create it using MKD
           try {
             await this.client.send('MKD ' + currentPath);
@@ -58702,7 +58712,7 @@ class SshSftpClient {
         if (stat.isDirectory()) {
           return; // Directory already exists
         }
-      } catch (statError) {
+      } catch (_statError) {
         // Directory doesn't exist, create it
       }
       
@@ -58809,7 +58819,7 @@ class StateManager {
         hash: hash,
         size: stats.size,
         mtime: stats.mtime.toISOString(),
-        localPath: file.path
+        localPath: file.relativePath  // Store relative path instead of absolute path for security
       };
     }
 
@@ -68936,7 +68946,8 @@ async function run() {
 
       // Upload changed/new files
       for (const fileInfo of comparison.filesToUpload) {
-        const localFilePath = fileInfo.localPath;
+        // Resolve relative path to absolute path
+        const localFilePath = path.resolve(localPath, fileInfo.localPath);
         const remoteFilePath = path.posix.join(remotePath, fileInfo.remotePath);
         
         if (dryRun) {
