@@ -58278,6 +58278,14 @@ class SshSftpClient {
       }, null, 2));
       await this.client.connect(connectConfig);
       console.log(`✅ [SFTP] Successfully connected to SFTP server`);
+      
+      // Log current working directory after connection
+      try {
+        const cwd = await this.client.cwd();
+        console.log(`📁 [SFTP] Current working directory after connection: "${cwd}"`);
+      } catch (cwdError) {
+        console.log(`⚠️ [SFTP] Could not get current working directory: ${cwdError.message}`);
+      }
     } catch (error) {
       console.log(`❌ [SFTP] Connection failed: ${error.message}`);
       throw new Error(`Failed to connect to SFTP server: ${error.message}`);
@@ -58285,20 +58293,24 @@ class SshSftpClient {
   }
 
   async uploadFile(localPath, remotePath) {
-    console.log(`⬆️ [SFTP] uploadFile: ${localPath} -> ${remotePath}`);
+    console.log(`⬆️ [SFTP] uploadFile called with:`);
+    console.log(`   localPath: "${localPath}"`);
+    console.log(`   remotePath: "${remotePath}"`);
     
     try {
       // Ensure remote directory exists
       const remoteDir = path.dirname(remotePath);
-      console.log(`📂 [SFTP] Ensuring remote directory: ${remoteDir}`);
+      console.log(`📂 [SFTP] Extracted remote directory from path.dirname("${remotePath}"): "${remoteDir}"`);
+      console.log(`📂 [SFTP] Remote directory type: ${typeof remoteDir}, length: ${remoteDir?.length}`);
+      
       await this.ensureRemoteDir(remoteDir);
       
       console.log(`📤 [SFTP] Calling client.put with params:`, {
-        localPath,
-        remotePath
+        localPath: `"${localPath}"`,
+        remotePath: `"${remotePath}"`
       });
       await this.client.put(localPath, remotePath);
-      console.log(`✅ [SFTP] Upload successful: ${remotePath}`);
+      console.log(`✅ [SFTP] Upload successful: "${remotePath}"`);
     } catch (error) {
       console.log(`❌ [SFTP] Upload failed: ${error.message}`);
       console.log(`🔍 [SFTP] Error details:`, {
@@ -58347,39 +58359,64 @@ class SshSftpClient {
   }
 
   async ensureRemoteDir(dirPath) {
-    if (dirPath === '/' || dirPath === '.') return;
+    console.log(`📂 [SFTP] ensureRemoteDir called with: "${dirPath}"`);
+    console.log(`📂 [SFTP] dirPath type: ${typeof dirPath}, length: ${dirPath?.length}`);
     
-    console.log(`📂 [SFTP] ensureRemoteDir: ${dirPath}`);
+    if (dirPath === '/' || dirPath === '.') {
+      console.log(`📂 [SFTP] Skipping root or current directory: "${dirPath}"`);
+      return;
+    }
+    
+    console.log(`📂 [SFTP] Processing directory path: "${dirPath}"`);
     
     try {
       // Check if directory already exists
       try {
-        console.log(`🔍 [SFTP] Checking if directory exists with stat: ${dirPath}`);
+        console.log(`🔍 [SFTP] Checking if directory exists with stat: "${dirPath}"`);
         const stat = await this.client.stat(dirPath);
+        console.log(`📊 [SFTP] Stat result for "${dirPath}":`, {
+          isDirectory: stat.isDirectory(),
+          isFile: stat.isFile(),
+          mode: stat.mode?.toString(8),
+          size: stat.size,
+          uid: stat.uid,
+          gid: stat.gid
+        });
+        
         if (stat.isDirectory()) {
-          console.log(`✅ [SFTP] Directory already exists: ${dirPath}`);
+          console.log(`✅ [SFTP] Directory already exists: "${dirPath}"`);
           return; // Directory already exists
         } else {
-          console.log(`⚠️ [SFTP] Path exists but is not a directory: ${dirPath}`);
+          console.log(`⚠️ [SFTP] Path exists but is not a directory: "${dirPath}"`);
         }
-      } catch (_statError) {
-        console.log(`📂 [SFTP] Directory doesn't exist, will create: ${dirPath}`);
+      } catch (statError) {
+        console.log(`❌ [SFTP] stat() failed for "${dirPath}": ${statError.message}`);
+        console.log(`🔍 [SFTP] Error details:`, {
+          name: statError.name,
+          code: statError.code,
+          errno: statError.errno
+        });
       }
       
       console.log(`🏗️ [SFTP] Calling client.mkdir with params:`, {
-        dirPath,
+        dirPath: `"${dirPath}"`,
         recursive: true
       });
       await this.client.mkdir(dirPath, true); // recursive mkdir
-      console.log(`✅ [SFTP] Successfully created directory: ${dirPath}`);
+      console.log(`✅ [SFTP] Successfully created directory: "${dirPath}"`);
     } catch (error) {
-      console.log(`❌ [SFTP] mkdir error: ${error.message}`);
+      console.log(`❌ [SFTP] mkdir error for "${dirPath}": ${error.message}`);
+      console.log(`🔍 [SFTP] mkdir error details:`, {
+        name: error.name,
+        code: error.code,
+        errno: error.errno
+      });
       
       // Directory might already exist, ignore error
       if (!error.message.includes('exists')) {
         throw new Error(`Failed to create remote directory ${dirPath}: ${error.message}`);
       } else {
-        console.log(`✅ [SFTP] Directory creation ignored (already exists): ${dirPath}`);
+        console.log(`✅ [SFTP] Directory creation ignored (already exists): "${dirPath}"`);
       }
     }
   }
