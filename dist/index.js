@@ -58620,7 +58620,7 @@ class StateManager {
         if (await this.remoteFileExists(client, oldPlainStateFile)) {
           await client.deleteFile(oldPlainStateFile);
         }
-      } catch (cleanupError) {
+      } catch (_cleanupError) {
         // Ignore cleanup errors - not critical
       }
     } catch (error) {
