@@ -17,13 +17,25 @@ class MockClient {
         'test.txt': { hash: 'testhash', size: 100, mtime: '2023-01-01T00:00:00.000Z' }
       }
     });
+    // Support both gzipped and plain files
+    this.supportGzip = options.supportGzip !== false;
   }
 
   async downloadFile(remotePath, localPath) {
     if (this.shouldFailDownload) {
       throw new Error('Download failed');
     }
-    await fs.writeFile(localPath, this.downloadData);
+    
+    // If it's a gzipped file request and we support gzip, provide compressed data
+    if (this.supportGzip && remotePath.endsWith('.gz')) {
+      const zlib = require('zlib');
+      const { promisify } = require('util');
+      const gzip = promisify(zlib.gzip);
+      const compressedData = await gzip(Buffer.from(this.downloadData, 'utf8'));
+      await require('fs').promises.writeFile(localPath, compressedData);
+    } else {
+      await require('fs').promises.writeFile(localPath, this.downloadData);
+    }
   }
 
   async uploadFile(localPath, remotePath) {
@@ -37,6 +49,29 @@ class MockClient {
     if (this.shouldFailExists) {
       throw new Error('Exists check failed');
     }
+    
+    // If file doesn't exist at all, return false
+    if (!this.fileExists) {
+      return false;
+    }
+    
+    // Special handling for state files
+    if (remotePath.includes('.ftp-sync-state')) {
+      // If we support gzip and a gzipped file is requested, return true
+      if (this.supportGzip && remotePath.endsWith('.gz')) {
+        return true;
+      }
+      
+      // If we don't support gzip and a plain file is requested, return true
+      if (!this.supportGzip && !remotePath.endsWith('.gz')) {
+        return true;
+      }
+      
+      // Otherwise, return false (e.g., asking for .gz when we only have plain, or vice versa)
+      return false;
+    }
+    
+    // For non-state files, return the general fileExists value
     return this.fileExists;
   }
 }
@@ -199,6 +234,17 @@ describe('StateManager', () => {
     const remoteState = await stateManager.downloadRemoteState(mockClient, '/remote');
     
     expect(remoteState).toBeNull();
+  });
+
+  test('should support backward compatibility with plain JSON state files', async () => {
+    // Mock client that only has plain JSON files (no gzip support)
+    const mockClient = new MockClient({ supportGzip: false });
+    
+    const remoteState = await stateManager.downloadRemoteState(mockClient, '/remote');
+    
+    expect(remoteState).toBeDefined();
+    expect(remoteState.version).toBe('1.0.0');
+    expect(remoteState.files['test.txt']).toBeDefined();
   });
 
   test('should upload state successfully', async () => {

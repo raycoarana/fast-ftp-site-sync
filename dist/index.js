@@ -58068,6 +58068,8 @@ class FtpClient {
   constructor(config) {
     this.config = config;
     this.client = new ftp.Client();
+    // Default timeout is 10 seconds, but can be configured
+    this.timeout = config.timeout || 10000;
   }
 
   async connect() {
@@ -58081,8 +58083,8 @@ class FtpClient {
 
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => {
-        reject(new Error('Connection timeout after 10 seconds'));
-      }, 10000);
+        reject(new Error(`Connection timeout after ${this.timeout / 1000} seconds`));
+      }, this.timeout);
     });
 
     try {
@@ -58490,10 +58492,16 @@ module.exports = SshSftpClient;
 const crypto = __nccwpck_require__(6982);
 const fs = (__nccwpck_require__(9896).promises);
 const path = __nccwpck_require__(6928);
+const zlib = __nccwpck_require__(3106);
+const { promisify } = __nccwpck_require__(9023);
+
+const gzip = promisify(zlib.gzip);
+const gunzip = promisify(zlib.gunzip);
 
 class StateManager {
   constructor(stateFilePath = '.ftp-sync-state.json') {
     this.stateFilePath = stateFilePath;
+    this.gzippedStateFilePath = stateFilePath + '.gz';
     this.currentState = {
       version: '1.0.0',
       lastSync: null,
@@ -58539,24 +58547,41 @@ class StateManager {
   }
 
   /**
-   * Download and parse remote state file
+   * Download and parse remote state file (supports both gzipped and plain JSON)
    */
   async downloadRemoteState(client, remotePath) {
     try {
-      const remoteStateFile = path.posix.join(remotePath, this.stateFilePath);
+      const gzippedStateFile = path.posix.join(remotePath, this.gzippedStateFilePath);
+      const plainStateFile = path.posix.join(remotePath, this.stateFilePath);
       
-      // Check if state file exists
-      const exists = await this.remoteFileExists(client, remoteStateFile);
-      if (!exists) {
-        return null;
+      // Try gzipped version first, then fall back to plain JSON for backward compatibility
+      let remoteStateFile;
+      let isCompressed = false;
+      
+      if (await this.remoteFileExists(client, gzippedStateFile)) {
+        remoteStateFile = gzippedStateFile;
+        isCompressed = true;
+      } else if (await this.remoteFileExists(client, plainStateFile)) {
+        remoteStateFile = plainStateFile;
+        isCompressed = false;
+      } else {
+        return null; // No state file found
       }
 
       // Download state file to temporary location
-      const tempFile = path.join((__nccwpck_require__(857).tmpdir)(), `remote-state-${Date.now()}.json`);
+      const tempFile = path.join((__nccwpck_require__(857).tmpdir)(), `remote-state-${Date.now()}${isCompressed ? '.gz' : '.json'}`);
       await client.downloadFile(remoteStateFile, tempFile);
       
-      // Parse and return state
-      const stateContent = await fs.readFile(tempFile, 'utf8');
+      // Read and parse state
+      let stateContent;
+      if (isCompressed) {
+        const compressedData = await fs.readFile(tempFile);
+        const decompressedData = await gunzip(compressedData);
+        stateContent = decompressedData.toString('utf8');
+      } else {
+        stateContent = await fs.readFile(tempFile, 'utf8');
+      }
+      
       await fs.unlink(tempFile); // Clean up temp file
       
       return JSON.parse(stateContent);
@@ -58567,21 +58592,37 @@ class StateManager {
   }
 
   /**
-   * Upload state file to remote server
+   * Upload state file to remote server (always compressed for space efficiency)
    */
   async uploadState(client, state, remotePath) {
     try {
-      const remoteStateFile = path.posix.join(remotePath, this.stateFilePath);
-      const tempFile = path.join((__nccwpck_require__(857).tmpdir)(), `local-state-${Date.now()}.json`);
+      const remoteStateFile = path.posix.join(remotePath, this.gzippedStateFilePath);
+      const tempFile = path.join((__nccwpck_require__(857).tmpdir)(), `local-state-${Date.now()}.json.gz`);
       
-      // Write state to temporary file
-      await fs.writeFile(tempFile, JSON.stringify(state, null, 2));
+      // Serialize state to JSON
+      const jsonData = JSON.stringify(state, null, 2);
+      
+      // Compress the JSON data
+      const compressedData = await gzip(Buffer.from(jsonData, 'utf8'));
+      
+      // Write compressed data to temporary file
+      await fs.writeFile(tempFile, compressedData);
       
       // Upload to remote (uploadFile will handle directory creation)
       await client.uploadFile(tempFile, remoteStateFile);
       
       // Clean up temp file
       await fs.unlink(tempFile);
+      
+      // Clean up old plain JSON state file if it exists (migration)
+      try {
+        const oldPlainStateFile = path.posix.join(remotePath, this.stateFilePath);
+        if (await this.remoteFileExists(client, oldPlainStateFile)) {
+          await client.deleteFile(oldPlainStateFile);
+        }
+      } catch (cleanupError) {
+        // Ignore cleanup errors - not critical
+      }
     } catch (error) {
       throw new Error(`Failed to upload state file: ${error.message}`);
     }
@@ -68587,6 +68628,7 @@ async function run() {
     const stateFilePath = core.getInput('state-file-path') || core.getInput('state_file_path') || '.ftp-sync-state.json';
     const forceFullSync = core.getInput('force-full-sync') === 'true' || core.getInput('force_full_sync') === 'true';
     const compression = core.getInput('compression') !== 'false'; // Default to true unless explicitly set to 'false'
+    const timeout = parseInt(core.getInput('timeout') || '10000'); // Default to 10 seconds
     
     core.info(`Starting ${protocol.toUpperCase()} sync from ${localPath} to ${remotePath}`);
     
@@ -68626,7 +68668,8 @@ async function run() {
         host,
         port,
         username,
-        password
+        password,
+        timeout
       });
     }
 
