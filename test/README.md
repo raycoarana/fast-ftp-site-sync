@@ -177,8 +177,8 @@ export RUNNER_DEBUG=1
 
 View Docker logs:
 ```bash
-docker compose -f docker-compose.test.yml logs ftp-server
-docker compose -f docker-compose.test.yml logs sftp-server
+docker compose -f docker-compose.yml logs ftp-server
+docker compose -f docker-compose.yml logs sftp-server
 ```
 
 ## 🎯 CI/CD Integration
@@ -203,4 +203,4 @@ Successful test run should show:
 
 - [Main CI Workflow](../.github/workflows/ci.yml)
 - [Integration Test Workflow](../.github/workflows/integration.yml)
-- [Docker Compose Config](../docker-compose.test.yml)
+- [Docker Compose Config](../docker-compose.yml)

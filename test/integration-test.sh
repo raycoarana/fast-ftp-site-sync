@@ -37,10 +37,10 @@ if [ "$TEST_ENV" = "local" ]; then
     echo "🐳 Starting Docker services for local testing..."
     
     # Stop any existing containers
-    docker compose -f docker-compose.test.yml down 2>/dev/null || true
+    docker compose -f docker-compose.yml down 2>/dev/null || true
     
     # Start services
-    docker compose -f docker-compose.test.yml up -d
+    docker compose -f docker-compose.yml up -d
     
     # Fix SFTP permissions after container starts
     echo "🔧 Fixing SFTP permissions..."
@@ -403,7 +403,7 @@ rm -f ./.ftp-*.json ./.sftp-*.json
 # Cleanup Docker services in local environment
 if [ "$TEST_ENV" = "local" ]; then
     echo "🐳 Stopping Docker services..."
-    docker compose -f docker-compose.test.yml down
+    docker compose -f docker-compose.yml down
 fi
 
 echo ""
